@@ -13,6 +13,8 @@ This script requires the following packages installed on your system:
 * **jq**: JSON processor.
 * **curl**: For downloading the schemes.
 * **tar**: For extracting the downloaded schemes.
+* **recol**: For extracting the images schemes.
+
 
 ## Installation
 
