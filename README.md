@@ -1,7 +1,9 @@
-# Lutgen Ricer
+# Ricer
 
 A CLI script to automate applying color schemes (palettes) to wallpapers using [lutgen](https://github.com/ozwaldorf/lutgen-rs).
 The script automatically syncs your custom palettes from a repository, processes them, and applies them to your images.
+
+Also included: **Noctalia Ricer**, a sibling script that generates complete [Noctalia](https://github.com/LierB/noctalia) palettes from any wallpaper using [recol](https://github.com/nlkli/recol) — see the [Noctalia Ricer section](#noctalia-ricer-recol-edition) below.
 
 ## Dependencies
 
@@ -62,4 +64,47 @@ REPO_URL="https://github.com/your-user/your-repo"
 
 ---
 
-Let me know if you'd also want a proper `README.md` file saved for the repo, or if you want me to tweak the tone (more casual vs. more formal for a public release).
+# Noctalia Ricer (recol edition)
+
+Generates complete [Noctalia](https://github.com/LierB/noctalia) palettes (Material Design 3 colors + terminal colors) from any wallpaper using [recol](https://github.com/nlkli/recol). Same fzf-driven flow as the ricer: live preview, instant color tuning with re-preview, parallel processing and caching.
+
+### Dependencies
+
+* **recol**: `cargo install --git https://github.com/nlkli/recol --branch main`
+* **fzf**: interactive menus and previews
+* **chafa**: image previews in the terminal (sixel)
+* **ffmpeg**: JPEG fallbacks and image decoding
+* **jq** and **python3**: palette generation and validation
+
+### Installation
+
+```bash
+cp noctalia-ricer wallpaper-to-noctalia ~/.local/bin/
+chmod +x ~/.local/bin/noctalia-ricer ~/.local/bin/wallpaper-to-noctalia
+```
+
+### Usage
+
+```bash
+noctalia-ricer              # interactive menu (fzf)
+wallpaper-to-noctalia IMG   # direct, no menus
+```
+
+Flow: pick a full folder or individual images with fzf (multi-select with TAB and sixel previews) → tune saturation, contrast, brightness, temperature, tint, vibrance, hue and normalize (with live preview and a custom palette name option) → Dark / Light / Both → palettes are written to `~/.config/noctalia/palettes/`, where Noctalia picks them up automatically.
+
+### Features
+
+* **Live preview** of the palette while you tune (chafa sixel)
+* **Dark + light variants**, both calibrated (the light one inverts surfaces but darkens accents to keep contrast)
+* **Unified background**: `mSurface` == `terminal.background` — the shell and terminal apps share the exact same color
+* **Minimum luminance floor**: very dark wallpapers never generate pitch-black backgrounds
+* **Stamp-based cache** (settings hash + image mtime): re-processing a folder skips everything already generated
+* **Parallel processing** (`MAX_JOBS=N`, default 4)
+* **Palette management**: edit (ENTER), rename (CTRL-R), delete with confirmation (CTRL-D, multi-select with TAB)
+* Custom palette names keep their Title Case ("Cream Autumn"), with an overwrite prompt if the name exists
+* Settings persist in `~/.config/noctalia-ricer.conf`
+
+### Notes
+
+* Custom palettes are **not** added to `registry.json` — Noctalia detects them by file
+* Images with very few unique colors (e.g. `nord_bridge.png`) make recol panic: the script automatically retries via an ffmpeg JPEG re-encode, and with added noise if needed
