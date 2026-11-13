@@ -2,7 +2,7 @@
 
 # /*
 #  * NOCTALIA RICER (recol edition)
-#  * Author: basado en LUTGEN RICER (Ezequiel/Zeke)
+#  * Author: basado en LUTGEN RICER (Ezequiel/Zeke, Mikuri12)
 #  *
 #  * Mismo flujo que ricer, pero genera palettes de Noctalia
 #  * desde wallpapers usando recol (ffmpeg palettegen).
@@ -1056,7 +1056,7 @@ menu_live_palette() {
         scheme=$(noctalia msg color-scheme-get 2>/dev/null)
 
         local choice
-        choice=$(printf "󰗑  Toggle: %s\n󰏘  Palette name            : <  $LIVE_PALETTE_NAME  >\n󰘮  Tune settings (preview)\n󰜉  Regenerate & apply now\n󰗼  Back" "$status" | \
+        choice=$(printf "󰗑  Toggle: %s\n󰏘  Palette name            : <  $LIVE_PALETTE_NAME  >\n󰘮  Tune settings (preview)\n󰜉  Regenerate & apply now\n󰋚  Save copy (freeze current)\n󰗼  Back" "$status" | \
             fzf --prompt="󰥔  LIVE PALETTE (auto on wallpaper change) ❯ " \
                 --header="Active scheme: ${scheme:-(noctalia not running)} | [ESC]: Back")
         [[ -z "$choice" ]] && return 0
@@ -1120,6 +1120,40 @@ menu_live_palette() {
                         noctalia msg color-scheme-set custom "$LIVE_PALETTE_NAME" >/dev/null 2>&1
                     fi
                     echo -e "${C_GREEN}[OK] Applied.${C_RESET}"
+                fi
+                sleep 0.8
+                ;;
+            *"Save copy"*)
+                if [[ ! -f "$PALETTES_DIR/$LIVE_PALETTE_NAME.json" ]]; then
+                    echo -e "${C_RED}[!] '$LIVE_PALETTE_NAME.json' no existe. Corré 'Regenerate & apply now' primero.${C_RESET}"
+                    sleep 1.2
+                    continue
+                fi
+                # default del nombre: wallpaper actual
+                local save_img save_base newname
+                save_img=$(noctalia msg wallpaper-get 2>/dev/null | head -n 1)
+                save_base=$(basename "${save_img%.*}" 2>/dev/null)
+                [[ -z "$save_base" ]] && save_base="$LIVE_PALETTE_NAME"
+                newname=$(prompt_palette_name "$save_base") || continue
+                [[ -z "$newname" ]] && continue
+                if [[ -f "$PALETTES_DIR/$newname.json" ]]; then
+                    local over
+                    over=$(printf "󰄬  Yes\n󰅚  No" | fzf \
+                        --prompt="󰏘  '$newname.json' ya existe. ¿Sobrescribir? ❯ " \
+                        --header="[ENTER]: sí | [ESC]: no")
+                    [[ "$over" != *"Yes"* ]] && continue
+                    rm -f "$PALETTES_DIR/$newname.json"
+                fi
+                cp "$PALETTES_DIR/$LIVE_PALETTE_NAME.json" "$PALETTES_DIR/$newname.json"
+                echo -e "${C_GREEN}[OK] Saved: '$newname.json' (congelada — la live sigue actualizándose).${C_RESET}"
+                # ofrecer activarla
+                local act
+                act=$(printf "󰄬  Yes\n󰅚  No" | fzf \
+                    --prompt="󰏘  Activate '$newname' as active palette? ❯ " \
+                    --header="[ENTER]: sí | [ESC]: no")
+                if [[ "$act" == *"Yes"* ]]; then
+                    noctalia msg color-scheme-set custom "$newname" >/dev/null 2>&1 \
+                        && echo -e "${C_GREEN}[OK] Active palette → $newname${C_RESET}"
                 fi
                 sleep 0.8
                 ;;

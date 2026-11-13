@@ -104,6 +104,8 @@ Menu option **`5. Live palette`** keeps a palette permanently in sync with your 
 
 It is stamp-cached (same wallpaper + same settings → no work) and safe to leave enabled. Generated palette defaults to `Live.json` (renameable from the menu). Requires `recol` on `PATH` (the hook sets it up itself).
 
+**Save copy**: the **`Save copy (freeze current)`** option snapshots the current live palette into a new one (named after the current wallpaper by default), with overwrite confirmation and an optional "activate now". The copy is frozen: the live palette keeps regenerating on wallpaper changes, the snapshot never changes.
+
 ### Features
 
 * **Live palette**: auto-regenerates the palette from the current wallpaper every time Noctalia's wallpaper changes (native `wallpaper_changed` hook, v5+)
