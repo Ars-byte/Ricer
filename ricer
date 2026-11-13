@@ -10,7 +10,7 @@
 
 C_BLUE="\e[1;34m"; C_GREEN="\e[1;32m"; C_RED="\e[1;31m"; C_YELLOW="\e[1;33m"; C_CYAN="\e[1;36m"; C_RESET="\e[0m"
 
-REPO_URL="https://github.com/ezequielgk/noctalia-colorschemes"
+REPO_URL="https://github.com/ezequielgk/Palettes"
 LUTGEN_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/lutgen"
 SYNC_MARKER="$LUTGEN_DIR/.synced"
 
@@ -21,13 +21,12 @@ MAX_JOBS="${MAX_JOBS:-4}"
 CONFIG_FILE="$LUTGEN_DIR/ricer.conf"
 CONFIG_NAME="ricer.conf"
 
-ALGORITHM="gaussian-blur"
+ALGORITHM="gaussian-rbf"
 PRESERVE="false"
 LUM="1.0"
 SHAPE="128.0"
 NEAREST="16"
 LEVEL="10"
-RADIUS="8.0"
 
 SATURATION="100"
 CONTRAST="0"
@@ -372,13 +371,18 @@ load_config() {
         val="${val%$'\r'}"
 
         case "$key" in
-            ALGORITHM)  [[ "$val" =~ ^(gaussian-blur|gaussian-rbf|gaussian-sampling|shepards|nearest-neighbor)$ ]] && ALGORITHM="$val" ;;
+            ALGORITHM)
+                if [[ "$val" == "gaussian-blur" || "$val" == "gaussian-rbf" ]]; then
+                    ALGORITHM="gaussian-rbf"
+                elif [[ "$val" =~ ^(gaussian-sampling|shepards|nearest-neighbor)$ ]]; then
+                    ALGORITHM="$val"
+                fi
+                ;;
             PRESERVE)   [[ "$val" =~ ^(true|false)$ ]] && PRESERVE="$val" ;;
             LUM)        [[ "$val" =~ ^[0-9]+([.][0-9]+)?$ ]] && LUM="$val" ;;
             SHAPE)      [[ "$val" =~ ^[0-9]+([.][0-9]+)?$ ]] && SHAPE="$val" ;;
             NEAREST)    [[ "$val" =~ ^[0-9]+$ ]] && NEAREST="$val" ;;
             LEVEL)      [[ "$val" =~ ^([2-9]|1[0-6])$ ]] && LEVEL="$val" ;;
-            RADIUS)     [[ "$val" =~ ^[0-9]+([.][0-9]+)?$ ]] && RADIUS="$val" ;;
             SATURATION)     [[ "$val" =~ ^[0-9]+$ ]] && SATURATION="$val" ;;
             CONTRAST)       [[ "$val" =~ ^-?[0-9]+$ ]] && CONTRAST="$val" ;;
             BRIGHTNESS)     [[ "$val" =~ ^[0-9]+$ ]] && BRIGHTNESS="$val" ;;
@@ -397,7 +401,6 @@ LUM=$LUM
 SHAPE=$SHAPE
 NEAREST=$NEAREST
 LEVEL=$LEVEL
-RADIUS=$RADIUS
 SATURATION=$SATURATION
 CONTRAST=$CONTRAST
 BRIGHTNESS=$BRIGHTNESS
@@ -410,7 +413,6 @@ build_lutgen_args() {
     LUTGEN_ARGS=()
 
     case "$ALGORITHM" in
-        gaussian-rbf)      LUTGEN_ARGS+=(-R) ;;
         gaussian-sampling) LUTGEN_ARGS+=(-G) ;;
         shepards)          LUTGEN_ARGS+=(-S) ;;
         nearest-neighbor)  LUTGEN_ARGS+=(-N) ;;
@@ -423,9 +425,6 @@ build_lutgen_args() {
         shepards)
             LUTGEN_ARGS+=(--nearest "$NEAREST")
             ;;
-        gaussian-blur)
-            LUTGEN_ARGS+=(--radius "$RADIUS")
-            ;;
     esac
 
     LUTGEN_ARGS+=(--level "$LEVEL")
@@ -434,7 +433,7 @@ build_lutgen_args() {
 }
 
 reset_settings() {
-    ALGORITHM="gaussian-blur"; PRESERVE="false"; LUM="1.0"; SHAPE="128.0"; NEAREST="16"; LEVEL="10"; RADIUS="8.0"
+    ALGORITHM="gaussian-rbf"; PRESERVE="false"; LUM="1.0"; SHAPE="128.0"; NEAREST="16"; LEVEL="10"
     SATURATION="100"; CONTRAST="0"; BRIGHTNESS="100"; COLOR_STRENGTH="100"; PALETTE_LIMIT="All"
     save_config
 }
@@ -837,7 +836,6 @@ interactive_tune_settings() {
         menu_lines+=("  Preserve luminosity    : $preserve_str  (Enter to toggle)")
         menu_lines+=("󰃞  Luminosity factor      : <  $LUM  >  (Enter to change)")
         menu_lines+=("  Algorithm              : <  $ALGORITHM  >  (Enter to change)")
-        menu_lines+=("󰁨  Radius (blur only)     : <  $RADIUS  >  (Enter to change)")
         menu_lines+=("󰁨  Shape (RBF only)       : <  $SHAPE  >  (Enter to change)")
         menu_lines+=("󰁨  Nearest colors         : <  $NEAREST  >  (Enter to change)")
         menu_lines+=("󰁨  Hald CLUT level        : <  $LEVEL  >  (Enter to change)")
@@ -867,11 +865,10 @@ interactive_tune_settings() {
             *"Preserve"*)             cursor_pos=9 ;;
             *"Luminosity"*)           cursor_pos=10 ;;
             *"Algorithm"*)            cursor_pos=11 ;;
-            *"Radius"*)               cursor_pos=12 ;;
-            *"Shape"*)                cursor_pos=13 ;;
-            *"Nearest"*)              cursor_pos=14 ;;
-            *"Hald"*)                 cursor_pos=15 ;;
-            *"Reset"*)                cursor_pos=16 ;;
+            *"Shape"*)                cursor_pos=12 ;;
+            *"Nearest"*)              cursor_pos=13 ;;
+            *"Hald"*)                 cursor_pos=14 ;;
+            *"Reset"*)                cursor_pos=15 ;;
         esac
 
         case "$item" in
@@ -964,20 +961,10 @@ interactive_tune_settings() {
                 ;;
             *"Algorithm"*)
                 local val
-                val=$(printf "gaussian-blur\ngaussian-rbf\nshepards\nnearest-neighbor" | fzf --prompt="  Algorithm ❯ " --header="Current: $ALGORITHM | [ENTER]: Confirm | [ESC]: Cancel")
+                val=$(printf "gaussian-rbf\nshepards\ngaussian-sampling\nnearest-neighbor" | fzf --prompt="  Algorithm ❯ " --header="Current: $ALGORITHM | [ENTER]: Confirm | [ESC]: Cancel")
                 if [[ -n "$val" ]]; then
                     ALGORITHM="$val"
                     echo -e "${C_GREEN}[OK] Algorithm → $ALGORITHM${C_RESET}"
-                    sleep 0.4
-                fi
-                continue
-                ;;
-            *"Radius"*)
-                local val
-                val=$(prompt_setting_value "Radius (blur)" "$RADIUS" "8.0 4.0 6.0 10.0 12.0 16.0 2.0" "^[0-9]+([.][0-9]+)?$")
-                if [[ -n "$val" ]]; then
-                    RADIUS="$val"
-                    echo -e "${C_GREEN}[OK] Radius → $RADIUS${C_RESET}"
                     sleep 0.4
                 fi
                 continue
