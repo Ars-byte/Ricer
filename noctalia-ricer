@@ -21,6 +21,11 @@ MAX_JOBS="${MAX_JOBS:-4}"
 CONFIG_FILE="$HOME/.config/noctalia-ricer.conf"
 CONFIG_NAME="noctalia-ricer.conf"
 
+# Live palette: hook de Noctalia que regenera la palette al cambiar el wallpaper
+LIVE_PALETTE_NAME="Live"
+HOOKS_CONF="$HOME/.config/noctalia/config.toml"
+HOOK_SCRIPT="$HOME/.config/noctalia/hooks/live-palette.sh"
+
 # Ajustes recol (defaults: sin cambios)
 SATURATION="0"
 CONTRAST="0"
@@ -410,6 +415,7 @@ load_config() {
             NORMALIZE)    [[ "$val" =~ ^-?[0-9]+$ ]] && NORMALIZE="$val" ;;
             EXTRA_SPEC)   EXTRA_SPEC="$val" ;;
             VARIANT)      [[ "$val" =~ ^(Dark|Light|Both)$ ]] && VARIANT="$val" ;;
+            LIVE_PALETTE_NAME) LIVE_PALETTE_NAME="$val" ;;
         esac
     done < "$CONFIG_FILE"
     return 0
@@ -425,8 +431,9 @@ TINT=$TINT
 VIBRANCE=$VIBRANCE
 HUE=$HUE
 NORMALIZE=$NORMALIZE
-EXTRA_SPEC=$EXTRA_SPEC
+EXTRA_SPEC="$EXTRA_SPEC"
 VARIANT=$VARIANT
+LIVE_PALETTE_NAME="$LIVE_PALETTE_NAME"
 EOF
 }
 
@@ -942,6 +949,184 @@ process_batch() {
     rm -rf "$status_dir"
 }
 
+# /*
+#  * LIVE PALETTE: hook wallpaper_changed de Noctalia (v5+).
+#  * Noctalia setea NOCTALIA_WALLPAPER_PATH al cambiar el wallpaper;
+#  * el hook regenera la palette y la re-aplica por IPC si esta activa.
+#  */
+live_hook_enabled() {
+    [[ -f "$HOOK_SCRIPT" ]] && grep -q "wallpaper_changed.*live-palette.sh" "$HOOKS_CONF" 2>/dev/null
+}
+
+install_live_hook() {
+    mkdir -p "$(dirname "$HOOK_SCRIPT")"
+
+    cat > "$HOOK_SCRIPT" << 'HOOKSCRIPT'
+#!/usr/bin/env bash
+# Live palette: regenera la palette de Noctalia cuando cambia el wallpaper.
+# Llamado por el hook wallpaper_changed (NOCTALIA_WALLPAPER_PATH seteado por Noctalia).
+set -u
+# PATH completo: el hook corre con un PATH minimo (sin ~/.cargo/bin ni ~/.local/bin)
+export PATH="$HOME/.local/bin:$HOME/.cargo/bin:/usr/local/bin:/usr/bin:/bin"
+img="${NOCTALIA_WALLPAPER_PATH:-}"
+[[ -n "$img" && -f "$img" ]] || exit 0
+
+# ajustes + nombre desde la conf del ricer (EXTRA_SPEC/LIVE_PALETTE_NAME van citados)
+conf="$HOME/.config/noctalia-ricer.conf"
+name="Live"
+[[ -r "$conf" ]] && source "$conf"
+
+cache="${XDG_CACHE_HOME:-$HOME/.cache}/noctalia-ricer"
+mkdir -p "$cache"
+
+# serializar: un solo run a la vez (cambios rapidos)
+exec 9>"$cache/live.lock"
+flock -n 9 || exit 0
+
+# spec de ajustes (igual que build_adjust_spec del ricer), ANTES del stamp:
+# cambiar un ajuste debe invalidar el cache
+parts=()
+for kv in "saturation=${SATURATION:-0}" "contrast=${CONTRAST:-0}" "brightness=${BRIGHTNESS:-0}" \
+          "temperature=${TEMPERATURE:-0}" "tint=${TINT:-0}" "vibrance=${VIBRANCE:-0}" \
+          "hue=${HUE:-0}" "normalize=${NORMALIZE:-0}"; do
+    v="${kv##*=}"
+    [[ "$v" != 0 ]] && parts+=("$kv")
+done
+[[ -n "${EXTRA_SPEC:-}" ]] && parts+=("$EXTRA_SPEC")
+spec="$(IFS=,; echo "${parts[*]}")"
+
+# skip si es el mismo wallpaper y mismos ajustes (hooks de startup)
+cur="$(stat -Lc '%Y:%s' "$img" 2>/dev/null):$name:$spec"
+[[ -f "$cache/live-stamp" && "$(cat "$cache/live-stamp" 2>/dev/null)" == "$cur" ]] && exit 0
+
+export NOCTALIA_ADJUST_SPEC="$spec"
+if ! "$HOME/.local/bin/wallpaper-to-noctalia" "$img" "$name" >> "$cache/live.log" 2>&1; then
+    echo "[$(date '+%F %T')] ERROR regenerando desde $img" >> "$cache/live.log"
+    exit 0
+fi
+printf '%s' "$cur" > "$cache/live-stamp"
+
+# re-aplicar si es la palette activa: config-reload re-lee el JSON del palette
+# y re-renderiza los templates al instante (templates-apply NO re-lee el JSON,
+# y color-scheme-set con el mismo valor es no-op).
+scheme="$(noctalia msg color-scheme-get 2>/dev/null)"
+if [[ "$scheme" == "custom $name" ]]; then
+    noctalia msg config-reload >/dev/null 2>&1
+fi
+HOOKSCRIPT
+    chmod +x "$HOOK_SCRIPT"
+
+    # registrar en config.toml (idempotente: reemplaza la linea previa)
+    local cmd="\"$HOOK_SCRIPT\""
+    if grep -q '^\[hooks\]' "$HOOKS_CONF" 2>/dev/null; then
+        sed -i '/^wallpaper_changed[[:space:]]*=/d' "$HOOKS_CONF"
+        sed -i "/^\[hooks\]/a wallpaper_changed = $cmd" "$HOOKS_CONF"
+    else
+        printf '\n[hooks]\nwallpaper_changed = %s\n' "$cmd" >> "$HOOKS_CONF"
+    fi
+
+    noctalia msg config-reload >/dev/null 2>&1
+}
+
+uninstall_live_hook() {
+    if grep -q '^\[hooks\]' "$HOOKS_CONF" 2>/dev/null; then
+        sed -i '/^wallpaper_changed[[:space:]]*=/d' "$HOOKS_CONF"
+        # dejar la seccion solo si quedan otros hooks
+        if [[ "$(sed -n '/^\[hooks\]/,/^\[/p' "$HOOKS_CONF" | grep -c '=')" -le 1 ]]; then
+            sed -i '/^\[hooks\]/d' "$HOOKS_CONF"
+        fi
+        noctalia msg config-reload >/dev/null 2>&1
+    fi
+}
+
+# genera la palette live desde el wallpaper actual y devuelve el nombre
+live_regenerate() {
+    local img
+    img=$(noctalia msg wallpaper-get 2>/dev/null | head -n 1)
+    [[ -n "$img" && -f "$img" ]] || { echo -e "${C_RED}[!] No active wallpaper found.${C_RESET}"; return 1; }
+    NOCTALIA_WALLPAPER_PATH="$img" "$HOOK_SCRIPT"
+    echo -e "${C_GREEN}[OK] '$LIVE_PALETTE_NAME.json' generated from: $(basename "$img")${C_RESET}"
+}
+
+menu_live_palette() {
+    while true; do
+        local status="󰅚  disabled"
+        live_hook_enabled && status="󰄬  enabled"
+        local scheme
+        scheme=$(noctalia msg color-scheme-get 2>/dev/null)
+
+        local choice
+        choice=$(printf "󰗑  Toggle: %s\n󰏘  Palette name            : <  $LIVE_PALETTE_NAME  >\n󰘮  Tune settings (preview)\n󰜉  Regenerate & apply now\n󰗼  Back" "$status" | \
+            fzf --prompt="󰥔  LIVE PALETTE (auto on wallpaper change) ❯ " \
+                --header="Active scheme: ${scheme:-(noctalia not running)} | [ESC]: Back")
+        [[ -z "$choice" ]] && return 0
+
+        case "$choice" in
+            *"Toggle"*)
+                if live_hook_enabled; then
+                    uninstall_live_hook
+                    echo -e "${C_CYAN}[i] Live palette hook disabled.${C_RESET}"
+                else
+                    install_live_hook
+                    echo -e "${C_GREEN}[OK] Hook installed ($HOOKS_CONF).${C_RESET}"
+                    echo -e "${C_CYAN}[i] Regenerating from current wallpaper...${C_RESET}"
+                    live_regenerate
+                    local over
+                    over=$(printf "󰄬  Yes\n󰅚  No" | fzf \
+                        --prompt="󰥔  Activate '$LIVE_PALETTE_NAME' as active palette? ❯ " \
+                        --header="[ENTER]: confirm | [ESC]: no")
+                    if [[ "$over" == *"Yes"* ]]; then
+                        noctalia msg color-scheme-set custom "$LIVE_PALETTE_NAME" >/dev/null 2>&1 \
+                            && echo -e "${C_GREEN}[OK] Active palette → $LIVE_PALETTE_NAME${C_RESET}"
+                    fi
+                fi
+                sleep 1
+                ;;
+            *"Palette name"*)
+                local val
+                val=$(prompt_palette_name "$LIVE_PALETTE_NAME")
+                if [[ -n "$val" && "$val" != "$LIVE_PALETTE_NAME" ]]; then
+                    # si estaba activa con el nombre viejo, migrar
+                    local was_active=false
+                    [[ "$(noctalia msg color-scheme-get 2>/dev/null)" == "custom $LIVE_PALETTE_NAME" ]] && was_active=true
+                    if [[ -f "$PALETTES_DIR/$LIVE_PALETTE_NAME.json" && ! -f "$PALETTES_DIR/$val.json" ]]; then
+                        mv "$PALETTES_DIR/$LIVE_PALETTE_NAME.json" "$PALETTES_DIR/$val.json"
+                    fi
+                    if live_hook_enabled; then
+                        install_live_hook   # re-escribe script + config.toml
+                        noctalia msg config-reload >/dev/null 2>&1
+                    fi
+                    LIVE_PALETTE_NAME="$val"
+                    save_config
+                    $was_active && noctalia msg color-scheme-set custom "$val" >/dev/null 2>&1
+                    echo -e "${C_GREEN}[OK] Live palette name → $val${C_RESET}"
+                fi
+                sleep 0.6
+                ;;
+            *"Tune settings"*)
+                local img
+                img=$(noctalia msg wallpaper-get 2>/dev/null | head -n 1)
+                [[ -n "$img" && -f "$img" ]] || img=$(get_sample_image)
+                if interactive_tune_settings "$img" "Live palette"; then
+                    live_hook_enabled && live_regenerate
+                fi
+                ;;
+            *"Regenerate"*)
+                if live_regenerate; then
+                    # ya activa: config-reload re-lee el JSON al instante; sino: activarla
+                    if [[ "$(noctalia msg color-scheme-get 2>/dev/null)" == "custom $LIVE_PALETTE_NAME" ]]; then
+                        noctalia msg config-reload >/dev/null 2>&1
+                    else
+                        noctalia msg color-scheme-set custom "$LIVE_PALETTE_NAME" >/dev/null 2>&1
+                    fi
+                    echo -e "${C_GREEN}[OK] Applied.${C_RESET}"
+                fi
+                sleep 0.8
+                ;;
+        esac
+    done
+}
+
 if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
 
 check_deps
@@ -963,7 +1148,7 @@ STATE="MAIN"
 while true; do
     case "$STATE" in
         "MAIN")
-            MAIN_CHOICE=$(printf "󰉋  1. Process full folder\n󰋹  2. Individual selection (fzf)\n󰏘  3. Edit local palettes\n󰘮  4. Processing Settings (Saturation/Contrast/Brightness/Temperature)\n󰍃  q. Exit" | \
+            MAIN_CHOICE=$(printf "󰉋  1. Process full folder\n󰋹  2. Individual selection (fzf)\n󰏘  3. Edit local palettes\n󰘮  4. Processing Settings (Saturation/Contrast/Brightness/Temperature)\n󰥔  5. Live palette (auto-update on wallpaper change)\n󰍃  q. Exit" | \
                 fzf --prompt="[ 󰏘 NOCTALIA RICER ] ❯ " \
                     --header="[q / ESC]: Exit" \
                     --bind="q:abort")
@@ -978,6 +1163,7 @@ while true; do
                 *"2."*) SOURCE_MODE="Individual"; STATE="SOURCE" ;;
                 *"3."*) menu_settings; STATE="MAIN" ;;
                 *"4."*) menu_processing_settings; STATE="MAIN" ;;
+                *"5."*) menu_live_palette ;;
                 *"q."*) echo -e "${C_YELLOW}Exiting...${C_RESET}"; exit 0 ;;
             esac
             ;;

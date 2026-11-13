@@ -94,8 +94,19 @@ wallpaper-to-noctalia IMG   # direct, no menus
 
 Flow: pick a full folder or individual images with fzf (multi-select with TAB and sixel previews) → tune saturation, contrast, brightness, temperature, tint, vibrance, hue and normalize (with live preview and a custom palette name option) → Dark / Light / Both → palettes are written to `~/.config/noctalia/palettes/`, where Noctalia picks them up automatically.
 
+### Live palette mode
+
+Menu option **`5. Live palette`** keeps a palette permanently in sync with your wallpaper:
+
+1. It installs a `wallpaper_changed` hook (native Noctalia v5+ hooks) in `~/.config/noctalia/config.toml`, pointing to `~/.config/noctalia/hooks/live-palette.sh`
+2. Every time you change the wallpaper, the hook regenerates the palette from the new image using your saved settings — and instantly re-applies it via Noctalia IPC (`noctalia msg config-reload`), so the shell, terminal and themed apps recolor themselves in a few seconds
+3. Pick **Regenerate & apply now** to activate it, **Tune settings** to adjust with live preview, or **Toggle** to disable
+
+It is stamp-cached (same wallpaper + same settings → no work) and safe to leave enabled. Generated palette defaults to `Live.json` (renameable from the menu). Requires `recol` on `PATH` (the hook sets it up itself).
+
 ### Features
 
+* **Live palette**: auto-regenerates the palette from the current wallpaper every time Noctalia's wallpaper changes (native `wallpaper_changed` hook, v5+)
 * **Live preview** of the palette while you tune (chafa sixel)
 * **Dark + light variants**, both calibrated (the light one inverts surfaces but darkens accents to keep contrast)
 * **Unified background**: `mSurface` == `terminal.background` — the shell and terminal apps share the exact same color

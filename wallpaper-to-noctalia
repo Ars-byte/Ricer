@@ -10,6 +10,7 @@ Guarda el palette en ~/.config/noctalia/palettes/<NOMBRE>.json
 Requiere: recol (cargo install --git https://github.com/nlkli/recol) y ffmpeg.
 """
 import json
+import os
 import re
 import subprocess
 import sys
@@ -215,13 +216,22 @@ def main() -> None:
     nombre = args[1] if len(args) > 1 else image.stem
     nombre = re.sub(r"[^a-zA-Z0-9 _-]", "", nombre).strip() or "sin-nombre"
 
-    tema_base = recol_theme(image)
+    tema_base = recol_theme(image, os.environ.get("NOCTALIA_ADJUST_SPEC") or None)
+    spec = os.environ.get("NOCTALIA_ADJUST_SPEC", "").strip()
+    # corregir tema base y su invertido en paralelo (recol es lo mas lento del pipeline)
+    from concurrent.futures import ThreadPoolExecutor
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        fut_base = pool.submit(recol_theme, image, spec or None)
+        fut_inv = pool.submit(recol_theme, image, "invert=50")
+        tema_base = fut_base.result()
+        tema_inv = fut_inv.result()
+
     if is_light(tema_base):
         tema_l = tema_base
-        tema_d = recol_theme(image, "invert=50,brightness=5")
+        tema_d = recol_theme(image, "invert=50,brightness=5" + ("," + spec if spec else ""))
     else:
         tema_d = tema_base
-        tema_l = recol_theme(image, "invert=50")
+        tema_l = tema_inv
 
     palette = {"dark": build_dark(tema_d), "light": build_light(tema_d, tema_l)}
     PALETTES_DIR.mkdir(parents=True, exist_ok=True)
