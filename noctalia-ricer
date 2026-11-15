@@ -165,22 +165,22 @@ def build_dark(c):
     primario, secundario, terciario = pick_accents(c)
     superficie = dark_surface(bg)
     return {
-        "mPrimary": primario, "mOnPrimary": bg[0],
-        "mSecondary": secundario, "mOnSecondary": bg[0],
-        "mTertiary": terciario, "mOnTertiary": bg[0],
-        "mError": base["red"], "mOnError": bg[0],
-        # mSurface == terminal.background: para apps de terminal el fondo debe
+        "primary": primario, "on_primary": bg[0],
+        "secondary": secundario, "on_secondary": bg[0],
+        "tertiary": terciario, "on_tertiary": bg[0],
+        "error": base["red"], "on_error": bg[0],
+        # surface == terminal.background: para apps de terminal el fondo debe
         # ser identico al del shell (convencion Cafecito/Noir).
-        "mSurface": superficie, "mOnSurface": fg[0],
-        "mSurfaceVariant": bg[2], "mOnSurfaceVariant": fg[0],
-        "mOutline": bg[4], "mShadow": shade(bg[0], 0.6),
-        "mHover": bg[3], "mOnHover": fg[0],
+        "surface": superficie, "on_surface": fg[0],
+        "surface_container": bg[2], "on_surface_variant": fg[0],
+        "outline_variant": bg[4], "shadow": shade(bg[0], 0.6),
+        "hover": bg[3], "on_hover": fg[0],
         "terminal": {
             "normal": {k: base[k] for k in ANSI},
             "bright": {k: bright[k] for k in ANSI},
             "foreground": fg[0], "background": superficie,
-            "selectionFg": bg[0], "selectionBg": primario,
-            "cursorText": bg[0], "cursor": fg[0],
+            "selection_fg": bg[0], "selection_bg": primario,
+            "cursor_text": bg[0], "cursor": fg[0],
         },
     }
 
@@ -194,14 +194,14 @@ def build_light(dark_c, light_c):
     primario, secundario = shade(primario, 0.9), shade(secundario, 0.85)
     terciario, error = shade(terciario, 0.85), shade(dark_c["base"]["red"], 0.82)
     return {
-        "mPrimary": primario, "mOnPrimary": s0,
-        "mSecondary": secundario, "mOnSecondary": s0,
-        "mTertiary": terciario, "mOnTertiary": s0,
-        "mError": error, "mOnError": s0,
-        "mSurface": s0, "mOnSurface": fg0,
-        "mSurfaceVariant": s1, "mOnSurfaceVariant": fg0,
-        "mOutline": s4, "mShadow": shade(s4, 0.7),
-        "mHover": s2, "mOnHover": fg0,
+        "primary": primario, "on_primary": s0,
+        "secondary": secundario, "on_secondary": s0,
+        "tertiary": terciario, "on_tertiary": s0,
+        "error": error, "on_error": s0,
+        "surface": s0, "on_surface": fg0,
+        "surface_container": s1, "on_surface_variant": fg0,
+        "outline_variant": s4, "shadow": shade(s4, 0.7),
+        "hover": s2, "on_hover": fg0,
         "terminal": {
             "normal": {k: (s4 if k == "black" else
                            dark_c["bg"][0] if k == "white" else
@@ -210,8 +210,8 @@ def build_light(dark_c, light_c):
                            shade(dark_c["bg"][0], 0.62) if k == "white" else
                            shade(dark_c["bright"][k], 0.79)) for k in ANSI},
             "foreground": fg0, "background": s0,
-            "selectionFg": s0, "selectionBg": primario,
-            "cursorText": s0, "cursor": fg0,
+            "selection_fg": s0, "selection_bg": primario,
+            "cursor_text": s0, "cursor": fg0,
         },
     }
 
@@ -224,7 +224,7 @@ def main():
         light = build_light(dark_c, light_c)
     else:
         light = build_dark(dark_c)
-    print(json.dumps({"dark": build_dark(dark_c), "light": light}, indent=2))
+    print(json.dumps({"version": 2, "dark": build_dark(dark_c), "light": light}, indent=2))
 
 if __name__ == "__main__":
     main()
@@ -271,8 +271,8 @@ fi
 for variant in dark light; do
     [[ "$(jq -r "has(\"$variant\")" "$file")" != "true" ]] && continue
     echo -e "\e[1;35m $variant\e[0m"
-    swatch_row "UI"       $(jq -r ".$variant | .mPrimary // empty, .mSecondary // empty, .mTertiary // empty, .mError // empty" "$file" 2>/dev/null)
-    swatch_row "Surface"  $(jq -r ".$variant | .mSurface // empty, .mSurfaceVariant // empty, .mOutline // empty, .mHover // empty" "$file" 2>/dev/null)
+    swatch_row "UI"       $(jq -r ".$variant | .primary // .mPrimary // empty, .secondary // .mSecondary // empty, .tertiary // .mTertiary // empty, .error // .mError // empty" "$file" 2>/dev/null)
+    swatch_row "Surface"  $(jq -r ".$variant | .surface // .mSurface // empty, .surface_container // .mSurfaceVariant // empty, .outline_variant // .mOutline // empty, .hover // .mHover // empty" "$file" 2>/dev/null)
     swatch_row "Terminal" $(jq -r ".$variant.terminal?.normal? | [.black, .red, .green, .yellow, .blue, .magenta, .cyan, .white] // [] | .[]?" "$file" 2>/dev/null)
     swatch_row "Bright"   $(jq -r ".$variant.terminal?.bright? | [.black, .red, .green, .yellow, .blue, .magenta, .cyan, .white] // [] | .[]?" "$file" 2>/dev/null)
     echo ""
@@ -362,13 +362,13 @@ print("light" if 0.2126*r+0.7152*g+0.0722*b > 128 else "dark")' "$theme_a" 2>/de
         echo ""
 
         if [[ -s "$palette_file" ]]; then
-            swatch_row "UI dark"  "$(jq -r .dark.mPrimary "$palette_file")" "$(jq -r .dark.mSecondary "$palette_file")" "$(jq -r .dark.mTertiary "$palette_file")" "$(jq -r .dark.mError "$palette_file")"
-            swatch_row "Surface"  "$(jq -r .dark.mSurface "$palette_file")" "$(jq -r .dark.mSurfaceVariant "$palette_file")" "$(jq -r .dark.mOutline "$palette_file")" "$(jq -r .dark.mHover "$palette_file")"
+            swatch_row "UI dark"  "$(jq -r '.dark.primary // .dark.mPrimary' "$palette_file")" "$(jq -r '.dark.secondary // .dark.mSecondary' "$palette_file")" "$(jq -r '.dark.tertiary // .dark.mTertiary' "$palette_file")" "$(jq -r '.dark.error // .dark.mError' "$palette_file")"
+            swatch_row "Surface"  "$(jq -r '.dark.surface // .dark.mSurface' "$palette_file")" "$(jq -r '.dark.surface_container // .dark.mSurfaceVariant' "$palette_file")" "$(jq -r '.dark.outline_variant // .dark.mOutline' "$palette_file")" "$(jq -r '.dark.hover // .dark.mHover' "$palette_file")"
             swatch_row "Terminal" $(jq -r '.dark.terminal | [.normal.black, .normal.red, .normal.green, .normal.yellow, .normal.blue, .normal.magenta, .normal.cyan, .normal.white] | .[]' "$palette_file")
             swatch_row "Bright"   $(jq -r '.dark.terminal | [.bright.black, .bright.red, .bright.green, .bright.yellow, .bright.blue, .bright.magenta, .bright.cyan, .bright.white] | .[]' "$palette_file")
-            swatch_row "Light"    "$(jq -r .light.mPrimary "$palette_file")" "$(jq -r .light.mSurface "$palette_file")" "$(jq -r .light.mOutline "$palette_file")"
+            swatch_row "Light"    "$(jq -r '.light.primary // .light.mPrimary' "$palette_file")" "$(jq -r '.light.surface // .light.mSurface' "$palette_file")" "$(jq -r '.light.outline_variant // .light.mOutline' "$palette_file")"
             echo ""
-            swatch_row "Term dark" "$(jq -r .dark.terminal.background "$palette_file")" "$(jq -r .dark.terminal.foreground "$palette_file")" "$(jq -r .dark.terminal.selectionBg "$palette_file")"
+            swatch_row "Term dark" "$(jq -r '.dark.terminal.background' "$palette_file")" "$(jq -r '.dark.terminal.foreground' "$palette_file")" "$(jq -r '.dark.terminal.selection_bg // .dark.terminal.selectionBg' "$palette_file")"
         else
             chafa -s "${FZF_PREVIEW_COLUMNS:-50}x${FZF_PREVIEW_LINES:-24}" "$thumb" 2>/dev/null
             echo -e "\n  \e[1;31m[Notice: Could not generate palette]\e[0m"
