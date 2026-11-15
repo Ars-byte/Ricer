@@ -325,7 +325,7 @@ sync_palettes() {
 
             for variant in dark light; do
                 local colors
-                colors=$(jq -r ".[ \"$variant\" ] | [.mSurface, .mOnSurface, .mPrimary, .mSecondary, .mTertiary] | map(strings | sub(\"^#\"; \"\") | ascii_downcase) | unique | join(\" \")" "$file" 2>/dev/null)
+                colors=$(jq -r ".[ \"$variant\" ] | [.surface // .mSurface, .on_surface // .mOnSurface, .primary // .mPrimary, .secondary // .mSecondary, .tertiary // .mTertiary] | map(strings | sub(\"^#\"; \"\") | ascii_downcase) | unique | join(\" \")" "$file" 2>/dev/null)
                 if [[ -n "$colors" ]]; then
                     echo "$colors" > "$LUTGEN_DIR/${base_name,,}-${variant}"
                 fi

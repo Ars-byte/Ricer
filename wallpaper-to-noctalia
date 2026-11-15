@@ -154,21 +154,21 @@ def build_dark(c: dict) -> dict:
     primario, secundario, terciario = pick_accents(c)
     superficie = dark_surface(bg)
     return {
-        "mPrimary": primario, "mOnPrimary": bg[0],
-        "mSecondary": secundario, "mOnSecondary": bg[0],
-        "mTertiary": terciario, "mOnTertiary": bg[0],
-        "mError": base["red"], "mOnError": bg[0],
-        # mSurface == terminal.background (fondo identico para terminal)
-        "mSurface": superficie, "mOnSurface": fg[0],
-        "mSurfaceVariant": bg[2], "mOnSurfaceVariant": fg[0],
-        "mOutline": bg[4], "mShadow": shade(bg[0], 0.6),
-        "mHover": bg[3], "mOnHover": fg[0],
+        "primary": primario, "on_primary": bg[0],
+        "secondary": secundario, "on_secondary": bg[0],
+        "tertiary": terciario, "on_tertiary": bg[0],
+        "error": base["red"], "on_error": bg[0],
+        # surface == terminal.background (fondo identico para terminal)
+        "surface": superficie, "on_surface": fg[0],
+        "surface_container": bg[2], "on_surface_variant": fg[0],
+        "outline_variant": bg[4], "shadow": shade(bg[0], 0.6),
+        "hover": bg[3], "on_hover": fg[0],
         "terminal": {
             "normal": {k: base[k] for k in ANSI},
             "bright": {k: bright[k] for k in ANSI},
             "foreground": fg[0], "background": superficie,
-            "selectionFg": bg[0], "selectionBg": primario,
-            "cursorText": bg[0], "cursor": fg[0],
+            "selection_fg": bg[0], "selection_bg": primario,
+            "cursor_text": bg[0], "cursor": fg[0],
         },
     }
 
@@ -183,14 +183,14 @@ def build_light(dark_c: dict, light_c: dict) -> dict:
     primario, secundario = shade(primario, 0.9), shade(secundario, 0.85)
     terciario, error = shade(terciario, 0.85), shade(dark_c["base"]["red"], 0.82)
     return {
-        "mPrimary": primario, "mOnPrimary": s0,
-        "mSecondary": secundario, "mOnSecondary": s0,
-        "mTertiary": terciario, "mOnTertiary": s0,
-        "mError": error, "mOnError": s0,
-        "mSurface": s0, "mOnSurface": fg0,
-        "mSurfaceVariant": s1, "mOnSurfaceVariant": fg0,
-        "mOutline": s4, "mShadow": shade(s4, 0.7),
-        "mHover": s2, "mOnHover": fg0,
+        "primary": primario, "on_primary": s0,
+        "secondary": secundario, "on_secondary": s0,
+        "tertiary": terciario, "on_tertiary": s0,
+        "error": error, "on_error": s0,
+        "surface": s0, "on_surface": fg0,
+        "surface_container": s1, "on_surface_variant": fg0,
+        "outline_variant": s4, "shadow": shade(s4, 0.7),
+        "hover": s2, "on_hover": fg0,
         "terminal": {
             "normal": {k: (s4 if k == "black" else
                            dark_c["bg"][0] if k == "white" else
@@ -199,8 +199,8 @@ def build_light(dark_c: dict, light_c: dict) -> dict:
                            shade(dark_c["bg"][0], 0.62) if k == "white" else
                            shade(dark_c["bright"][k], 0.79)) for k in ANSI},
             "foreground": fg0, "background": s0,
-            "selectionFg": s0, "selectionBg": primario,
-            "cursorText": s0, "cursor": fg0,
+            "selection_fg": s0, "selection_bg": primario,
+            "cursor_text": s0, "cursor": fg0,
         },
     }
 
@@ -233,7 +233,7 @@ def main() -> None:
         tema_d = tema_base
         tema_l = tema_inv
 
-    palette = {"dark": build_dark(tema_d), "light": build_light(tema_d, tema_l)}
+    palette = {"version": 2, "dark": build_dark(tema_d), "light": build_light(tema_d, tema_l)}
     PALETTES_DIR.mkdir(parents=True, exist_ok=True)
     out = PALETTES_DIR / f"{nombre}.json"
     out.write_text(json.dumps(palette, indent=2) + "\n")
